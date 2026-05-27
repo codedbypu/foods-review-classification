@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import _bootstrap  # noqa: F401  # must run before rris imports
+
 import argparse
 import logging
 from pathlib import Path
@@ -25,7 +27,7 @@ def main() -> None:
     args = parse_args()
     setup_logging(LoggingConfig(level=args.log_level))
 
-    df = read_reviews(args.input).copy()
+    df = read_reviews(args.input, require_rating=False).copy()
     df["text"] = df["text"].astype(str).map(normalize_text)
 
     out = Path(args.out)
