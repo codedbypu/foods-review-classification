@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 
 import numpy as np
+import torch
 from sklearn.model_selection import train_test_split
 
 from rris.data.datasets import df_to_hf_sentiment_dataset
@@ -30,6 +31,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--eval_batch_size", type=int, default=32)
     p.add_argument("--test_size", type=float, default=0.2)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--no_progress", action="store_true", help="Disable tqdm progress bars")
     p.add_argument("--log_level", type=str, default="INFO")
     return p.parse_args()
 
@@ -38,11 +40,15 @@ def main() -> None:
     args = parse_args()
     setup_logging(LoggingConfig(level=args.log_level))
 
+    logger.info(
+        "Torch CUDA available: %s",
+        torch.cuda.is_available(),
+    )
+
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     df = read_reviews(args.input)
-    # stratify by label (0..4)
     y = df["user_rating"].astype(int).to_numpy() - 1
     train_idx, val_idx = train_test_split(
         np.arange(len(df)),
@@ -64,11 +70,11 @@ def main() -> None:
         train_batch_size=args.train_batch_size,
         eval_batch_size=args.eval_batch_size,
         seed=args.seed,
+        disable_tqdm=args.no_progress,
     )
 
     trainer = train_xlmr_sentiment(train_ds, val_ds, cfg=cfg, out_dir=out_dir)
 
-    # Save final eval metrics
     metrics = trainer.evaluate()
     (out_dir / "eval_metrics.json").write_text(
         json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -78,4 +84,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -29,9 +29,16 @@ class XlmrSentimentConfig:
     eval_batch_size: int = 32
     weight_decay: float = 0.01
     seed: int = 42
+    disable_tqdm: bool = False
 
 
-def _tokenize_dataset(ds: Dataset, tokenizer, max_length: int) -> Dataset:
+def _tokenize_dataset(
+    ds: Dataset,
+    tokenizer,
+    max_length: int,
+    *,
+    desc: str = "Tokenizing",
+) -> Dataset:
     def _tok(batch: Dict[str, list]) -> Dict[str, list]:
         return tokenizer(
             batch["text"],
@@ -39,7 +46,7 @@ def _tokenize_dataset(ds: Dataset, tokenizer, max_length: int) -> Dataset:
             max_length=max_length,
         )
 
-    return ds.map(_tok, batched=True, desc="Tokenizing")
+    return ds.map(_tok, batched=True, desc=desc)
 
 
 def compute_metrics(eval_pred) -> Dict[str, float]:
@@ -59,11 +66,20 @@ def train_xlmr_sentiment(
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    use_cuda = torch.cuda.is_available()
+    logger.info(
+        "XLM-R training device: %s (fp16=%s)",
+        "cuda" if use_cuda else "cpu",
+        use_cuda,
+    )
+
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_name, use_fast=True)
     model = AutoModelForSequenceClassification.from_pretrained(cfg.model_name, num_labels=5)
 
-    train_tok = _tokenize_dataset(train_ds, tokenizer, cfg.max_length)
-    val_tok = _tokenize_dataset(val_ds, tokenizer, cfg.max_length)
+    train_tok = _tokenize_dataset(
+        train_ds, tokenizer, cfg.max_length, desc="Tokenize train"
+    )
+    val_tok = _tokenize_dataset(val_ds, tokenizer, cfg.max_length, desc="Tokenize val")
 
     collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
@@ -83,7 +99,8 @@ def train_xlmr_sentiment(
         metric_for_best_model="accuracy",
         greater_is_better=True,
         report_to=[],
-        fp16=torch.cuda.is_available(),
+        fp16=use_cuda,
+        disable_tqdm=cfg.disable_tqdm,
     )
 
     trainer = Trainer(
@@ -115,4 +132,3 @@ def probs_and_expected_rating_from_logits(logits: np.ndarray) -> Tuple[np.ndarra
     classes = np.array([1, 2, 3, 4, 5], dtype=np.float32)
     expected = (probs * classes[None, :]).sum(axis=1)
     return probs, expected
-

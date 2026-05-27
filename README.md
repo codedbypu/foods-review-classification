@@ -64,9 +64,7 @@ cd foods-review-classification
 
 ### 2. Install Dependencies (แนะนำให้ใช้ Virtual Environment)
 
-#### Option A: ติดตั้งแบบใช้ `requirements.txt` (ง่ายสุด)
-
-> ตัวอย่างด้านล่างเป็นคำสั่งบน Windows (PowerShell)
+> ตัวอย่างด้านล่างเป็นคำสั่งบน Windows (PowerShell) — Linux/macOS ใช้ `source .venv/bin/activate` แทน
 
 ```bash
 python -m venv .venv
@@ -75,70 +73,123 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-#### Option B: ติดตั้งเป็นแพ็กเกจแบบ editable (แนะนำถ้าจะพัฒนาเพิ่ม)
+**ให้ import `rris` ได้** — เลือกอย่างใดอย่างหนึ่ง:
+
+| วิธี | เมื่อไหร่ใช้ |
+| --- | --- |
+| `pip install -e .` | แนะนำสำหรับพัฒนา / Jupyter / รันสคริปต์ซ้ำๆ |
+| ไม่ต้องติดตั้งแพ็กเกจ | สคริปต์ใน `scripts/` โหลด `scripts/_bootstrap.py` ให้เพิ่ม `src/` เข้า `sys.path` อัตโนมัติ |
 
 ```bash
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
 pip install -e .
-pip install -r requirements.txt
 ```
+
+ดู pipeline แบบครบวงจรได้ที่ notebook รากโปรเจกต์: [`food-review.ipynb`](food-review.ipynb)
 
 ### 3. Usage (การใช้งานผ่านสคริปต์)
 
-สคริปต์ทั้งหมดอยู่ในโฟลเดอร์ `scripts/` และรองรับไฟล์ `.csv` หรือ `.parquet`
+รันจาก **root ของ repo** (`foods-review-classification/`). สคริปต์อยู่ใน `scripts/` รองรับ `.csv` / `.parquet` และใช้ `rris.data.io.read_reviews` แปลง schema ให้
 
-#### รูปแบบข้อมูลขั้นต่ำที่ต้องมี
+สคริปต์ทุกตัวรองรับ `--no_progress` เพื่อปิด tqdm progress bar
 
-- **คอลัมน์บังคับ**: `text`, `user_rating`
-  - `text`: ข้อความรีวิว
-  - `user_rating`: คะแนนดาวจากผู้ใช้ (ต้องอยู่ในช่วง 1..5)
-- **คอลัมน์ทางเลือก**:
-  - `lang` (ใช้แยกผล eval ตามภาษาใน `scripts/evaluate.py`)
-  - `lat`, `lon` (ใช้ export GeoJSON ใน `scripts/score_and_flag.py`)
+#### รูปแบบข้อมูล
+
+- **มาตรฐาน (หลัง preprocess / parquet)**: `text`, `user_rating` (1..5)
+- **Wongnai CSV โดยตรง** (เช่น Hugging Face export): คอลัมน์ `review_body`, `stars` — `read_reviews` แมปเป็น `text`, `user_rating` อัตโนมัติ
+- **ทางเลือก**: `lang` (แยกผล eval), `lat`, `lon` (export GeoJSON ใน `score_and_flag.py`)
+
+ตัวอย่างไฟล์ใน repo: `data/wongnai-restaurant-review_train.csv`
 
 #### 3.1 Preprocess (normalize ข้อความ)
 
 ```bash
-python scripts/preprocess.py --input data/raw.csv --out data/processed.parquet
+python scripts/preprocess.py --input data/wongnai-restaurant-review_train.csv --out data/wongnai_processed.parquet
 ```
+
+| Flag | คำอธิบาย |
+| --- | --- |
+| `--input` | ไฟล์ `.csv` / `.parquet` ต้นทาง |
+| `--out` | ไฟล์ผลลัพธ์หลัง normalize |
+| `--no_progress` | ปิด progress bar |
 
 #### 3.2 Train: Baseline (TF-IDF + XGBoost)
 
 ```bash
-python scripts/train_baseline_xgb.py --input data/processed.parquet --out_dir artifacts/baseline_xgb
+python scripts/train_baseline_xgb.py ^
+  --input data/wongnai_processed.parquet ^
+  --out_dir artifacts/baseline_xgb
+```
+
+อ่าน Wongnai CSV ได้โดยตรง (ไม่ต้อง preprocess ก่อน ถ้ายอมรับ normalize ตอน train):
+
+```bash
+python scripts/train_baseline_xgb.py --input data/wongnai-restaurant-review_train.csv --out_dir artifacts/baseline_xgb
+```
+
+| Flag | Default | คำอธิบาย |
+| --- | --- | --- |
+| `--device` | `auto` | `auto` \| `cpu` \| `cuda` — **auto** ใช้ CUDA ถ้า `torch.cuda.is_available()` ไม่งั้น CPU + `--n_jobs` |
+| `--n_jobs` | `-1` | worker สำหรับตัดคำ / TF-IDF / XGBoost บน CPU |
+| `--max_rows` | (ไม่จำกัด) | จำกัดแถวสำหรับ smoke / demo |
+| `--no_progress` | off | ปิด progress bar |
+
+**GPU (XGBoost):** `--device auto` ตรวจ NVIDIA CUDA ผ่าน PyTorch แล้วตั้ง `device=cuda` ให้ XGBoost — ถ้าไม่มี GPU จะ fallback CPU หลาย thread อัตโนมัติ (Intel iGPU **ไม่** เร่ง XGBoost)
+
+ถ้า VRAM เต็มหรือ CUDA error ให้บังคับ CPU:
+
+```bash
+python scripts/train_baseline_xgb.py --input data/wongnai_processed.parquet --out_dir artifacts/baseline_xgb --device cpu --n_jobs -1
+```
+
+Smoke test สั้นๆ:
+
+```bash
+python scripts/train_baseline_xgb.py --input data/wongnai-restaurant-review_train.csv --out_dir artifacts/baseline_smoke --max_rows 2000 --device auto
 ```
 
 #### 3.3 Train: SOTA (Fine-tune XLM-RoBERTa 5-class)
 
 ```bash
-python scripts/train_xlmr_sentiment.py --input data/processed.parquet --out_dir artifacts/xlmr
+python scripts/train_xlmr_sentiment.py --input data/wongnai_processed.parquet --out_dir artifacts/xlmr
 ```
+
+| Flag | หมายเหตุ |
+| --- | --- |
+| `--no_progress` | ปิด tqdm ระหว่างเทรน |
+| (อื่นๆ) | `--model_name`, `--epochs`, `--train_batch_size`, … ดู `--help` |
+
+> **CUDA:** XLM-R ใช้ PyTorch — แนะนำ GPU (VRAM หลาย GB) สคริปต์ log `Torch CUDA available: True/False` ตอนเริ่ม การเทรนเต็มชุด Wongnai ใช้เวลานาน; ทดลองกับ subset หรือ baseline ก่อน
 
 #### 3.4 Evaluate โมเดลที่เทรนแล้ว
 
 ```bash
-python scripts/evaluate.py --input data/processed.parquet --model_type baseline_xgb --artifact_dir artifacts/baseline_xgb --out reports/baseline_metrics.json
-python scripts/evaluate.py --input data/processed.parquet --model_type xlmr --artifact_dir artifacts/xlmr --out reports/xlmr_metrics.json
+python scripts/evaluate.py --input data/wongnai_processed.parquet --model_type baseline_xgb --artifact_dir artifacts/baseline_xgb --out reports/baseline_metrics.json
+python scripts/evaluate.py --input data/wongnai_processed.parquet --model_type xlmr --artifact_dir artifacts/xlmr --out reports/xlmr_metrics.json --batch_size 32
 ```
+
+| Flag | Default | คำอธิบาย |
+| --- | --- | --- |
+| `--batch_size` | `32` | batch สำหรับ inference XLM-R |
+| `--n_jobs` | `-1` | parallel สำหรับ baseline vectorize |
+| `--no_progress` | off | ปิด progress bar |
 
 #### 3.5 Score + Integrity Check + Export สี/GeoJSON
 
-คำสั่งนี้จะคำนวณ
-- `ai_expected_rating`, `ai_pred_class`
-- `delta` และ `is_anomaly` (ตรวจความต่างระหว่างดาวผู้ใช้กับ AI ด้วย threshold)
-- `ai_hex_color` (แมปสีจากคะแนน)
-- ไฟล์ aspects เพิ่มเติม (`*_aspects.csv|parquet`) เพื่อใช้ downstream
+คำนวณ `ai_expected_rating`, `ai_pred_class`, `delta`, `is_anomaly`, `ai_hex_color` และไฟล์ aspects (`*_aspects.csv|parquet`)
 
 ```bash
-python scripts/score_and_flag.py --input data/processed.parquet --model_type baseline_xgb --artifact_dir artifacts/baseline_xgb --out outputs/scored.parquet
+python scripts/score_and_flag.py --input data/wongnai_processed.parquet --model_type baseline_xgb --artifact_dir artifacts/baseline_xgb --out outputs/scored.parquet
 ```
 
-ถ้ามี `lat`/`lon` และอยาก export GeoJSON:
+| Flag | Default | คำอธิบาย |
+| --- | --- | --- |
+| `--batch_size` | `32` | batch สำหรับ XLM-R scoring |
+| `--n_jobs` | `-1` | parallel สำหรับ baseline |
+| `--no_progress` | off | ปิด progress bar |
+| `--geojson_out` | (ไม่มี) | export GeoJSON ถ้ามี `lat`, `lon` |
 
 ```bash
-python scripts/score_and_flag.py --input data/processed.parquet --model_type xlmr --artifact_dir artifacts/xlmr --out outputs/scored.parquet --geojson_out outputs/scored.geojson
+python scripts/score_and_flag.py --input data/wongnai_processed.parquet --model_type baseline_xgb --artifact_dir artifacts/baseline_xgb --out outputs/scored.parquet --batch_size 32 --n_jobs -1
 ```
 
 ---

@@ -11,3 +11,4 @@ evaluate
 sentence-transformers
 rapidfuzz
 pyarrow
+tqdm
