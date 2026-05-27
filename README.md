@@ -62,16 +62,84 @@ git clone https://github.com/codedbypu/foods-review-classification.git
 cd foods-review-classification
 ```
 
-### 2. Install Dependencies
+### 2. Install Dependencies (แนะนำให้ใช้ Virtual Environment)
+
+#### Option A: ติดตั้งแบบใช้ `requirements.txt` (ง่ายสุด)
+
+> ตัวอย่างด้านล่างเป็นคำสั่งบน Windows (PowerShell)
 
 ```bash
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 3. Run the Training Pipeline
+#### Option B: ติดตั้งเป็นแพ็กเกจแบบ editable (แนะนำถ้าจะพัฒนาเพิ่ม)
 
-* สำหรับเทรนและทดสอบโมเดล XGBoost: `python src/train_xgboost.py`
-* สำหรับ Fine-tune โมเดล XLM-RoBERTa: `python src/train_roberta.py`
+```bash
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -e .
+pip install -r requirements.txt
+```
+
+### 3. Usage (การใช้งานผ่านสคริปต์)
+
+สคริปต์ทั้งหมดอยู่ในโฟลเดอร์ `scripts/` และรองรับไฟล์ `.csv` หรือ `.parquet`
+
+#### รูปแบบข้อมูลขั้นต่ำที่ต้องมี
+
+- **คอลัมน์บังคับ**: `text`, `user_rating`
+  - `text`: ข้อความรีวิว
+  - `user_rating`: คะแนนดาวจากผู้ใช้ (ต้องอยู่ในช่วง 1..5)
+- **คอลัมน์ทางเลือก**:
+  - `lang` (ใช้แยกผล eval ตามภาษาใน `scripts/evaluate.py`)
+  - `lat`, `lon` (ใช้ export GeoJSON ใน `scripts/score_and_flag.py`)
+
+#### 3.1 Preprocess (normalize ข้อความ)
+
+```bash
+python scripts/preprocess.py --input data/raw.csv --out data/processed.parquet
+```
+
+#### 3.2 Train: Baseline (TF-IDF + XGBoost)
+
+```bash
+python scripts/train_baseline_xgb.py --input data/processed.parquet --out_dir artifacts/baseline_xgb
+```
+
+#### 3.3 Train: SOTA (Fine-tune XLM-RoBERTa 5-class)
+
+```bash
+python scripts/train_xlmr_sentiment.py --input data/processed.parquet --out_dir artifacts/xlmr
+```
+
+#### 3.4 Evaluate โมเดลที่เทรนแล้ว
+
+```bash
+python scripts/evaluate.py --input data/processed.parquet --model_type baseline_xgb --artifact_dir artifacts/baseline_xgb --out reports/baseline_metrics.json
+python scripts/evaluate.py --input data/processed.parquet --model_type xlmr --artifact_dir artifacts/xlmr --out reports/xlmr_metrics.json
+```
+
+#### 3.5 Score + Integrity Check + Export สี/GeoJSON
+
+คำสั่งนี้จะคำนวณ
+- `ai_expected_rating`, `ai_pred_class`
+- `delta` และ `is_anomaly` (ตรวจความต่างระหว่างดาวผู้ใช้กับ AI ด้วย threshold)
+- `ai_hex_color` (แมปสีจากคะแนน)
+- ไฟล์ aspects เพิ่มเติม (`*_aspects.csv|parquet`) เพื่อใช้ downstream
+
+```bash
+python scripts/score_and_flag.py --input data/processed.parquet --model_type baseline_xgb --artifact_dir artifacts/baseline_xgb --out outputs/scored.parquet
+```
+
+ถ้ามี `lat`/`lon` และอยาก export GeoJSON:
+
+```bash
+python scripts/score_and_flag.py --input data/processed.parquet --model_type xlmr --artifact_dir artifacts/xlmr --out outputs/scored.parquet --geojson_out outputs/scored.geojson
+```
 
 ---
 
