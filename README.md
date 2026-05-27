@@ -1,1 +1,83 @@
-# foods-review-classification
+# Restaurant Sentiment And Rating Review
+
+ระบบวิเคราะห์และตรวจสอบความน่าเชื่อถือของธุรกิจร้านอาหารด้วย AI โดยเปลี่ยนข้อความรีวิวให้กลายเป็น **"คะแนนรีวิว"**  และ Map กับสี เพื่อนำเสนอผ่านแอปพลิเคชันแผนที่อารมณ์เรืองแสง (Neon Sentiment Heatmap) พร้อมระบบตรวจสอบความสอดคล้องของรีวิวเพื่อตรวจจับรีวิวปลอมหรือความผิดปกติของข้อมูล
+
+---
+
+## 🌟 Key Features (ฟีเจอร์เด่นของระบบ)
+
+1. **Multilingual Aspect-Based Sentiment Analysis (ABSA):** สกัดระดับความรู้สึก (1-5 ดาว) แยกตามมิติสำคัญ เช่น รสชาติอาหาร (Food), การบริการ (Service), ราคา (Price) และภาพรวม (General)
+2. **Sentiment-to-Color Mapping:** แปลงผลลัพธ์คะแนนความรู้สึกเป็นรหัสสีตามจิตวิทยา เช่น 🟦 5 ดาว (ดีเยี่ยม), 🟩 4 ดาว (ดี), 🟨 3 ดาว (ปานกลาง), 🟧 2 ดาว (ไม่ค่อยดี), 🟥 1 ดาว (แย่มาก)
+3. **Integrity & Anomaly Detection (ระบบจับผิด):** เปรียบเทียบคะแนนที่ AI ประเมินได้จากข้อความ กับ คะแนนดาวที่ผู้ใช้กดจริง หากมีความต่างกันอย่างรุนแรง ($\Delta \ge 2.0$) ระบบจะแจ้งเตือนว่าเป็นรีวิวต้องสงสัยทันที
+
+---
+
+## 🧠 AI Models & Benchmarking (สถาปัตยกรรมโมเดลและการวัดผล)
+
+โปรเจกต์นี้ทำการเปรียบเทียบประสิทธิภาพ (Benchmarking) ระหว่าง 2 โมเดล เพื่อหาจุดสมดุลระหว่างความแม่นยำและความเร็วในการประมวลผล (Accuracy vs Speed Trade-off):
+
+* **State-of-the-Art Model (Fine-tuned XLM-RoBERTa):** โมเดลกลุ่ม Transformer แบบ Multilingual เรียนรู้ความรู้สึกข้ามสายภาษา (Cross-lingual Transfer) โดยทดลองพัฒนาด้วยเทคนิค Transfer Learning จากชุดข้อมูลขนาดใหญ่อย่าง *Amazon Fine Food Dataset* สู่ชุดข้อมูลรีวิวภาษาไทย
+* **Baseline Model (TF-IDF + XGBoost):** โมเดลสายสถิติตระกูล Tree-based โดยใช้ `PyThaiNLP` เป็น Custom Tokenizer ในการตัดคำผสมสองภาษา (ไทย-อังกฤษ) เพื่อสร้างตารางฟีเจอร์ความถี่คำ 
+
+---
+
+## 📊 Dataset Used & Spatial Splitting (ชุดข้อมูลและการแบ่งสัดส่วน)
+
+โปรเจกต์นี้ใช้ชุดข้อมูลผสมผสานสองภาษา (Multilingual Datasets) รวมทั้งสิ้นกว่า 500,000 ข้อความ โดยแบ่งโครงสร้างอย่างเป็นระบบเพื่อใช้ในการเทรน (Training) และทดสอบความคงเส้นคงวาของโมเดล (Independent Evaluation) ดังนี้:
+
+### 🎯 1. Training & Validation Datasets (สัดส่วน Train 70% / Validation 30%)
+ชุดข้อมูลหลักที่เปิดให้ทั้งโมเดล **XLM-RoBERTa** และ **TF-IDF + XGBoost** ได้เรียนรู้โครงสร้างของภาษาและอารมณ์ความรู้สึก:
+
+* **🇺🇸 English Language Domain:**
+    * [Amazon Fine Food Reviews](https://www.kaggle.com/datasets/snap/amazon-fine-food-reviews) (~400,000 รีวิว) — ชุดข้อมูลขนาดใหญ่สำหรับสร้างฐานความรู้ (Base Knowledge) ด้าน Sentiment Analysis
+* **🇹🇭 Thai Language Domain:**
+    * [Wongnai Corpus](https://github.com/wongnai/wongnai-corpus) (~40,000 รีวิว) — คลังข้อมูลรีวิวร้านอาหารภาษาไทยระดับมาตรฐาน
+    * [iamwarint/wongnai-restaurant-review](https://huggingface.co/datasets/iamwarint/wongnai-restaurant-review) (~20,000 รีวิว) — ชุดข้อมูลรีวิวภาษาไทยเพิ่มเติมเพื่อเพิ่มความหลากหลายของคำศัพท์
+
+### 🧪 2. Independent Evaluation Datasets (Testing Only 100%)
+ชุดข้อมูลทดสอบภายนอก (Holdout Sets) ที่โมเดลไม่เคยเห็นในขั้นตอนการเทรน เพื่อใช้วัดประสิทธิภาพที่แท้จริงและใช้ประมวลผลร่วมกับระบบตรวจจับรีวิวปลอม (Anomaly Detection):
+
+* **🇹🇭 Thai Language Testing:**
+    * [wttw/restaurant_review](https://huggingface.co/datasets/wttw/restaurant_review) (~71,000 รีวิว) — ชุดข้อมูลขนาดใหญ่สำหรับทดสอบความแม่นยำและความเร็วของโมเดลในโดเมนร้านอาหารไทย
+* **🇺🇸 English Language Testing:**
+    * [joebeachcapital/restaurant-reviews](https://www.kaggle.com/datasets/joebeachcapital/restaurant-reviews) (~10,000 รีวิว) — ชุดข้อมูลสำหรับทดสอบประสิทธิภาพโมเดลในโดเมนร้านอาหารฝั่งภาษาอังกฤษ
+
+---
+
+## 🛠️ Tech Stack (เครื่องมือที่ใช้พัฒนา)
+
+* **Language:** Python 3.x
+* **NLP & Deep Learning:** Hugging Face Transformers, PyTorch / TensorFlow
+* **Machine Learning:** Scikit-learn, XGBoost
+* **Thai NLP:** PyThaiNLP (newmm engine)
+* **Data Manipulation:** Pandas, NumPy
+
+---
+
+## 🚀 Getting Started (วิธีติดตั้งและใช้งาน)
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/codedbypu/foods-review-classification.git
+cd foods-review-classification
+```
+
+### 2. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Run the Training Pipeline
+
+* สำหรับเทรนและทดสอบโมเดล XGBoost: `python src/train_xgboost.py`
+* สำหรับ Fine-tune โมเดล XLM-RoBERTa: `python src/train_roberta.py`
+
+---
+
+## 📈 Evaluation Results (ผลการทดสอบเบื้องต้น)
+
+| Model | Accuracy | F1-Score (Macro) | Inference Speed (per review) | Model Size |
+| --- | --- | --- | --- | --- |
+| **TF-IDF + XGBoost** | --% | --% | ~ XX ms | ~ XX MB |
+| **Fine-tuned XLM-RoBERTa** | --% | --% | ~ XX ms | ~ XX MB |
