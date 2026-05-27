@@ -58,6 +58,7 @@ coverage.xml
 /data/**/*.parquet
 /data/**/*.jsonl
 /data/**/*.feather
+/data
 
 /models/
 /artifacts/
