@@ -1,11 +1,28 @@
+"""
+Aspect keyword/fuzzy/embedding mapping for extracted surfaces.
+
+COMMON ERRORS (kernel crash / disk full):
+  Previously SentenceTransformer was instantiated on EVERY map_surface_to_aspect call.
+  score_and_flag on 500+ reviews could try to download ~470MB hundreds of times.
+  Fix: @lru_cache on _get_embedding_model + use --skip_aspects in score_and_flag for notebooks.
+"""
 from __future__ import annotations
 
 import logging
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=2)
+def _get_embedding_model(model_name: str):
+    """Load embedding model once per process (critical for score_and_flag loops)."""
+    from sentence_transformers import SentenceTransformer
+
+    return SentenceTransformer(model_name)
 
 
 ASPECT_CANONICAL: Tuple[str, ...] = (
@@ -173,17 +190,16 @@ def map_surface_to_aspect(
         if best_kw is not None and best_score >= cfg.fuzzy_threshold:
             return _KEYWORD_TO_ASPECT[best_kw]
 
-    # 4) embeddings fallback (optional) for multilingual semantic mapping
+    # 4) embeddings fallback — needs HF model + disk; disable in notebooks via AspectMappingConfig
     if cfg.enable_embeddings_fallback:
         try:
-            from sentence_transformers import SentenceTransformer
             import numpy as np
         except Exception as e:
             logger.warning("Embeddings fallback unavailable (%s). Returning None.", e)
             return None
 
         try:
-            model = SentenceTransformer(cfg.embedding_model_name)
+            model = _get_embedding_model(cfg.embedding_model_name)
             candidates = list(canonical_aspects)
             emb = model.encode([s] + candidates, normalize_embeddings=True)
             q = emb[0]

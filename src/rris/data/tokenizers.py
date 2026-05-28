@@ -1,3 +1,10 @@
+"""
+Multilingual tokenization for TF-IDF baseline (Thai + English).
+
+COMMON ERRORS:
+  - RuntimeError: PyThaiNLP is required — pip install pythainlp.
+  - Very slow on ~80k rows: reduce parallel workers (train --n_jobs 4), not -1 in notebooks.
+"""
 from __future__ import annotations
 
 import logging

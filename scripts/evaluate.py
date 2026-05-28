@@ -1,6 +1,18 @@
+"""
+Evaluate saved baseline or XLM-R on labeled data.
+
+COMMON ERRORS:
+  - Artifact not found: run train_* first with same --out_dir / --artifact_dir.
+  - Baseline on full parquet after train with --max_rows: metrics reflect mismatch — use same data slice.
+  - Kernel crash: eval ~19k rows with --n_jobs -1 (tokenize RAM) — use --n_jobs 4 in notebooks.
+  - XLM-R CUDA OOM during batched predict: lower --batch_size (default 32; try 8 on 6GB GPU).
+  - joblib/XGB load fail: artifact_dir must contain tfidf_vectorizer.joblib + xgb_model.json.
+  - See docs/ERRORS_AND_FIXES.md §9.
+"""
 from __future__ import annotations
 
 import _bootstrap  # noqa: F401
+import _scratch_init  # noqa: F401
 
 import argparse
 import json
@@ -18,6 +30,7 @@ from xgboost import XGBClassifier
 from rris.data.io import read_reviews
 from rris.data.text import normalize_text
 from rris.logging_utils import LoggingConfig, setup_logging
+from rris.runtime_env import add_scratch_argument, apply_scratch_from_args
 from rris.models.baseline.tfidf_xgb import expected_rating_from_proba, transform_texts_with_progress
 from rris.models.xlmr.sentiment_trainer import probs_and_expected_rating_from_logits
 from rris.progress import stage, tqdm_if
@@ -33,6 +46,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--out", required=True, help="Output metrics json path")
     p.add_argument("--batch_size", type=int, default=32, help="Batch size for XLM-R inference")
     p.add_argument("--n_jobs", type=int, default=-1, help="Parallel jobs for baseline vectorize")
+    add_scratch_argument(p)
     p.add_argument("--no_progress", action="store_true", help="Disable tqdm progress bars")
     p.add_argument("--log_level", default="INFO")
     return p.parse_args()
@@ -100,11 +114,13 @@ def _predict_baseline(
 
 def main() -> None:
     args = parse_args()
+    apply_scratch_from_args(Path(__file__).resolve().parents[1], args)
     setup_logging(LoggingConfig(level=args.log_level))
     show_progress = not args.no_progress
 
     artifact_dir = Path(args.artifact_dir)
     with stage("Load data", enabled=show_progress):
+        # Evaluates ALL rows in --input; if train used --max_rows, metrics compare different populations
         df = read_reviews(args.input).copy()
         y = df["user_rating"].astype(int).to_numpy()
         y_cls = y - 1

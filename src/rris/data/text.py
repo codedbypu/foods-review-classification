@@ -1,3 +1,9 @@
+"""
+Text normalization and lightweight sentence splitting.
+
+COMMON ERRORS:
+  - ValueError: text is None — drop or fill empty review rows before normalize_text().
+"""
 from __future__ import annotations
 
 import logging

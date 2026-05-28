@@ -1,3 +1,11 @@
+"""
+Extract aspect mentions per review sentence (keyword/heuristic).
+
+COMMON ERRORS:
+  - Kernel crash / disk full: embedding fallback loads SentenceTransformer per surface without cache.
+    Fix: enable_embeddings_fallback=False in notebooks; use --skip_aspects in score_and_flag.
+  - Called in a per-review loop — keep mapping lightweight (see aspects.py @lru_cache).
+"""
 from __future__ import annotations
 
 import logging

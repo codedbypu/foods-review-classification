@@ -1,6 +1,17 @@
+"""
+Score reviews, anomaly flags, optional aspect export.
+
+COMMON ERRORS:
+  - Kernel crash: aspect loop + SentenceTransformer → use --skip_aspects (recommended in notebooks).
+  - Missing artifacts: train baseline first (tfidf_vectorizer.joblib, xgb_model.json).
+  - VRAM: imports torch; subprocess helps but parent notebook may still hold GPU memory.
+  - GeoJSON: needs lat, lon, review_id columns (see viz/geo_export.py).
+  - See docs/ERRORS_AND_FIXES.md §4, §11.
+"""
 from __future__ import annotations
 
 import _bootstrap  # noqa: F401
+import _scratch_init  # noqa: F401
 
 import argparse
 import logging
@@ -12,10 +23,12 @@ import pandas as pd
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
+from rris.data.aspects import AspectMappingConfig
 from rris.data.io import read_reviews, write_table
 from rris.data.text import normalize_text
 from rris.integrity.anomaly import anomaly_check
 from rris.logging_utils import LoggingConfig, setup_logging
+from rris.runtime_env import add_scratch_argument, apply_scratch_from_args
 from rris.models.baseline.tfidf_xgb import expected_rating_from_proba, transform_texts_with_progress
 from rris.models.xlmr.aspect_extractor import AspectExtractionConfig, extract_aspect_mentions
 from rris.models.xlmr.sentiment_trainer import probs_and_expected_rating_from_logits
@@ -42,6 +55,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--batch_size", type=int, default=32)
     p.add_argument("--n_jobs", type=int, default=-1)
     p.add_argument("--no_progress", action="store_true")
+    p.add_argument(
+        "--skip_aspects",
+        action="store_true",
+        help="Skip aspect extraction (avoids loading sentence-transformers; recommended in notebooks)",
+    )
+    add_scratch_argument(p)
     p.add_argument("--log_level", default="INFO")
     return p.parse_args()
 
@@ -105,6 +124,7 @@ def score_baseline_xgb(
 
 def main() -> None:
     args = parse_args()
+    apply_scratch_from_args(Path(__file__).resolve().parents[1], args)
     setup_logging(LoggingConfig(level=args.log_level))
     show_progress = not args.no_progress
 
@@ -154,20 +174,25 @@ def main() -> None:
         df["is_anomaly"] = flags
 
     aspect_rows = []
-    with log_stage("Aspect extraction"):
-        pairs = list(zip(df["review_id"].astype(str), df["text"].astype(str)))
-        for rid, text in tqdm_if(pairs, show_progress=show_progress, desc="Aspects", total=len(pairs)):
-            mentions = extract_aspect_mentions(review_id=rid, text=text, cfg=AspectExtractionConfig())
-            for m in mentions:
-                aspect_rows.append(
-                    {
-                        "review_id": m.review_id,
-                        "sentence_idx": m.sentence_idx,
-                        "sentence_text": m.sentence_text,
-                        "aspect": m.aspect,
-                        "surface": m.surface,
-                    }
-                )
+    if not args.skip_aspects:
+        # Embeddings off by default: ST download per surface caused kernel/disk failures (see aspects.py)
+        aspect_cfg = AspectExtractionConfig(
+            mapping=AspectMappingConfig(enable_embeddings_fallback=False),
+        )
+        with log_stage("Aspect extraction"):
+            pairs = list(zip(df["review_id"].astype(str), df["text"].astype(str)))
+            for rid, text in tqdm_if(pairs, show_progress=show_progress, desc="Aspects", total=len(pairs)):
+                mentions = extract_aspect_mentions(review_id=rid, text=text, cfg=aspect_cfg)
+                for m in mentions:
+                    aspect_rows.append(
+                        {
+                            "review_id": m.review_id,
+                            "sentence_idx": m.sentence_idx,
+                            "sentence_text": m.sentence_text,
+                            "aspect": m.aspect,
+                            "surface": m.surface,
+                        }
+                    )
 
     out_path = Path(args.out)
     write_table(df, out_path)

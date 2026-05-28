@@ -1,3 +1,10 @@
+"""
+GeoJSON export for scored reviews (map viz).
+
+COMMON ERRORS:
+  - ValueError: Missing required column lat/lon/review_id — add coordinates or omit --geojson_out in score_and_flag.
+  - NaN lat/lon: cast/filter rows before export (float() will fail on NaN in strict pipelines).
+"""
 from __future__ import annotations
 
 import json

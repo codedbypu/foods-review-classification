@@ -1,3 +1,12 @@
+"""
+XGBoost device selection and safe GPU→CPU fallback.
+
+COMMON ERRORS:
+  - cudaErrorMemoryAllocation: VRAM full (notebook already loaded torch, or 6GB GPU).
+    Fix: --device cpu when training inside Jupyter.
+  - auto picks cuda if torch.cuda.is_available() — may conflict with other GPU users.
+  - After GPU OOM, empty_cache() then refit on CPU (see fit_xgb_with_fallback).
+"""
 from __future__ import annotations
 
 import logging
@@ -98,6 +107,28 @@ def fit_xgb_with_fallback(
         model.fit(X, y, **fit_kwargs)
         return model, runtime
     except Exception as e:
+        err = str(e).lower()
+        is_malloc = "bad_malloc" in err or "failed to allocate" in err
+        if is_malloc and runtime.resolved == "cpu" and runtime.n_jobs not in (1, 0):
+            logger.warning(
+                "XGBoost bad_malloc with n_jobs=%s; retrying fit with n_jobs=1",
+                runtime.n_jobs,
+            )
+            cpu_rt = resolve_xgb_params("cpu", n_jobs=1)
+            cpu_model = build_model(cpu_rt)
+            try:
+                cpu_model.fit(X, y, **fit_kwargs)
+                return cpu_model, cpu_rt
+            except Exception as e2:
+                e = e2
+                err = str(e).lower()
+                is_malloc = "bad_malloc" in err or "failed to allocate" in err
+        if is_malloc:
+            raise RuntimeError(
+                "XGBoost could not allocate memory (bad_malloc). On Windows: free space on C: "
+                "(pagefile), use --scratch_dir on a drive with free GB (e.g. D:\\rris-scratch), "
+                "or set env RRIS_SCRATCH_DIR. Also try --max_features 25000 --n_jobs 1."
+            ) from e
         if runtime.resolved != "cuda":
             raise
         msg = str(e).lower()
@@ -111,6 +142,7 @@ def fit_xgb_with_fallback(
         try:
             import torch
 
+            # Free VRAM before CPU refit — helps after cudaErrorMemoryAllocation in Jupyter
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         except ImportError:

@@ -1,5 +1,7 @@
 # Restaurant Sentiment And Rating Review
 
+> คู่มือเชิงลึกฉบับเต็ม: **[README2.md](README2.md)** — โดยเฉพาะ **[§6 คู่มือการรัน (Runbook)](README2.md#6-คู่มือการรันแบบละเอียด-runbook)** ครอบคลุมทุกเคส (smoke, full train, bad_malloc, scratch_dir, notebook, XLM-R, production)
+
 ระบบวิเคราะห์และตรวจสอบความน่าเชื่อถือของธุรกิจร้านอาหารด้วย AI โดยเปลี่ยนข้อความรีวิวให้กลายเป็น **"คะแนนรีวิว"**  และ Map กับสี เพื่อนำเสนอผ่านแอปพลิเคชันแผนที่อารมณ์เรืองแสง (Neon Sentiment Heatmap) พร้อมระบบตรวจสอบความสอดคล้องของรีวิวเพื่อตรวจจับรีวิวปลอมหรือความผิดปกติของข้อมูล
 
 ---
@@ -92,6 +94,9 @@ pip install -e .
 
 สคริปต์ทุกตัวรองรับ `--no_progress` เพื่อปิด tqdm progress bar
 
+**แก้ error / kernel crash:** ดู [docs/ERRORS_AND_FIXES.md](docs/ERRORS_AND_FIXES.md)  
+**ผลรันเช็คล่าสุด:** [docs/RUNTIME_CHECK_REPORT.md](docs/RUNTIME_CHECK_REPORT.md) — แต่ละสคริปต์ใน `scripts/` และโมดูล runtime ใน `src/rris/` มีบล็อก `COMMON ERRORS` ที่หัวไฟล์
+
 #### รูปแบบข้อมูล
 
 - **มาตรฐาน (หลัง preprocess / parquet)**: `text`, `user_rating` (1..5)
@@ -131,6 +136,7 @@ python scripts/train_baseline_xgb.py --input data/wongnai-restaurant-review_trai
 | `--device` | `auto` | `auto` \| `cpu` \| `cuda` — **auto** ใช้ CUDA ถ้า `torch.cuda.is_available()` ไม่งั้น CPU + `--n_jobs` |
 | `--n_jobs` | `-1` | worker สำหรับตัดคำ / TF-IDF / XGBoost บน CPU |
 | `--max_rows` | (ไม่จำกัด) | จำกัดแถวสำหรับ smoke / demo |
+| `--scratch_dir` | (ไม่มี) | โฟลเดอร์ temp บนไดรฟ์ที่ว่าง (`RRIS_SCRATCH_DIR`) — ดู [README2 §4.4](README2.md#44-เลือกไดรฟ์--โฟลเดอร์-temp---scratch_dir) |
 | `--no_progress` | off | ปิด progress bar |
 
 **GPU (XGBoost):** `--device auto` ตรวจ NVIDIA CUDA ผ่าน PyTorch แล้วตั้ง `device=cuda` ให้ XGBoost — ถ้าไม่มี GPU จะ fallback CPU หลาย thread อัตโนมัติ (Intel iGPU **ไม่** เร่ง XGBoost)

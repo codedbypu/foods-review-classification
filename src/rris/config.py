@@ -1,3 +1,10 @@
+"""
+Default repo directory layout (data/, models/, reports/).
+
+COMMON ERRORS:
+  - Wrong repo_root passed to default_paths() → artifacts written outside the project.
+  - Expecting raw CSV under data/raw/ when files are directly under data/ — adjust paths in scripts/notebook.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -1,3 +1,11 @@
+"""
+Compare user star rating vs AI expected rating.
+
+COMMON ERRORS:
+  - ValueError: Expected probs shape (5,) — pass softmax probabilities, not raw logits.
+  - ValueError: user_rating / ai_rating out of range — both must be 1..5.
+  - score_and_flag needs user_rating column even when only displaying AI scores (for anomaly flag).
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass

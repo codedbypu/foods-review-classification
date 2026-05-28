@@ -1,3 +1,10 @@
+"""
+Progress helpers (tqdm wrappers, stage logging).
+
+COMMON ERRORS:
+  - ModuleNotFoundError: No module named 'tqdm' — pip install tqdm (in requirements).
+  - Use --no_progress on CLI scripts when bars clutter logs or CI.
+"""
 from __future__ import annotations
 
 import logging

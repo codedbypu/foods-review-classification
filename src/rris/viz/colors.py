@@ -1,3 +1,9 @@
+"""
+Rating → hex color for maps and exports.
+
+COMMON ERRORS:
+  - ValueError: rating must be 1..5 — clip/round model expected_rating before rating_to_hex().
+"""
 from __future__ import annotations
 
 from typing import Dict

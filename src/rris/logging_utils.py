@@ -1,3 +1,10 @@
+"""
+Process-wide logging setup for CLI scripts.
+
+COMMON ERRORS:
+  - Duplicate log lines in notebooks: setup_logging() called many times — existing handlers are reused (by design).
+  - No output: log level too high — pass LoggingConfig(level=\"DEBUG\") or --log_level DEBUG on scripts.
+"""
 from __future__ import annotations
 
 import logging

@@ -1,14 +1,19 @@
+"""
+Load/save review tables (.csv / .parquet).
+
+COMMON ERRORS:
+  - Missing column text: CSV ไม่มี header หรือเป็นไฟล์ข้อความคอลัมน์เดียว (แถวแรกกลายเป็นชื่อคอลัมน์)
+  - Missing column user_rating: ไฟล์ไม่มีดาว 1-5 (preprocess ใช้ require_rating=False ได้)
+  - Wongnai HF/Kaggle: ใช้ review_body + stars → map เป็น text + user_rating อัตโนมัติ
+"""
 from __future__ import annotations
 
-import json
 import logging
-import time
 from pathlib import Path
+
 import pandas as pd
 
 logger = logging.getLogger(__name__)
-
-_DEBUG_LOG = Path(__file__).resolve().parents[3] / "debug-9aac7e.log"
 
 _TEXT_ALIASES = frozenset(
     {"text", "review", "Review", "review_body", "content", "comment", "review_text"}
@@ -18,21 +23,8 @@ _RATING_ALIASES = frozenset(
 )
 
 
-def _agent_log(hypothesis_id: str, location: str, message: str, data: dict, *, run_id: str = "pre-fix") -> None:
-    payload = {
-        "sessionId": "9aac7e",
-        "runId": run_id,
-        "hypothesisId": hypothesis_id,
-        "location": location,
-        "message": message,
-        "data": data,
-        "timestamp": int(time.time() * 1000),
-    }
-    with _DEBUG_LOG.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-
-
 def _looks_like_review_text_header(columns: list) -> bool:
+    """True when pandas used the first review line as the column name (no real header)."""
     if len(columns) != 1:
         return False
     name = str(columns[0])
@@ -40,8 +32,8 @@ def _looks_like_review_text_header(columns: list) -> bool:
 
 
 def _rename_aliases(df: pd.DataFrame) -> pd.DataFrame:
+    """Map Wongnai/HF column names (review_body, stars) to text, user_rating."""
     out = df.copy()
-    col_map = {str(c): c for c in out.columns}
     for c in list(out.columns):
         key = str(c).strip()
         if key in _TEXT_ALIASES and "text" not in out.columns:
@@ -53,30 +45,19 @@ def _rename_aliases(df: pd.DataFrame) -> pd.DataFrame:
 
 def _load_csv_reviews(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path)
-    # #region agent log
-    _agent_log(
-        "A",
-        "io.py:_load_csv_reviews",
-        "initial pandas read",
-        {"columns": [str(c) for c in df.columns], "ncols": len(df.columns), "nrows": len(df)},
-    )
-    # #endregion
 
+    # ERROR FIX: single-column text export — re-read without treating row 1 as header
     if "text" not in df.columns and (_looks_like_review_text_header(list(df.columns)) or len(df.columns) == 1):
         df = pd.read_csv(path, header=None, names=["text"])
-        # #region agent log
-        _agent_log(
-            "A",
-            "io.py:_load_csv_reviews",
-            "re-read single-column CSV as text",
-            {"columns": list(df.columns), "nrows": len(df)},
-        )
-        # #endregion
 
     return _rename_aliases(df)
 
 
 def read_reviews(path: str | Path, *, require_rating: bool = True) -> pd.DataFrame:
+    """
+    require_rating=False: for preprocess only.
+    require_rating=True: train/evaluate/score (needs user_rating 1..5).
+    """
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Input file not found: {path}")
@@ -88,20 +69,6 @@ def read_reviews(path: str | Path, *, require_rating: bool = True) -> pd.DataFra
         df = _load_csv_reviews(path)
     else:
         raise ValueError(f"Unsupported file type: {path.suffix}. Use .csv or .parquet")
-
-    # #region agent log
-    _agent_log(
-        "B",
-        "io.py:read_reviews",
-        "schema after coerce",
-        {
-            "columns": [str(c) for c in df.columns],
-            "has_text": "text" in df.columns,
-            "has_user_rating": "user_rating" in df.columns,
-            "require_rating": require_rating,
-        },
-    )
-    # #endregion
 
     if "text" not in df.columns:
         raise ValueError(

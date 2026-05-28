@@ -1,3 +1,10 @@
+"""
+Hugging Face Trainer wrapper for XLM-R sentiment.
+
+COMMON ERRORS:
+  - CPU training ~80k rows: expect many hours; use progress via disable_tqdm=False.
+  - fp16 only when cuda available — CPU uses more RAM.
+"""
 from __future__ import annotations
 
 import logging

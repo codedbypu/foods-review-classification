@@ -1,3 +1,10 @@
+"""
+Pandas → Hugging Face Dataset for XLM-R training.
+
+COMMON ERRORS:
+  - ValueError: Missing text/rating column — use labeled parquet from read_reviews.
+  - ValueError: user_rating must be 1..5 — filter invalid stars before train_xlmr_sentiment.
+"""
 from __future__ import annotations
 
 import logging

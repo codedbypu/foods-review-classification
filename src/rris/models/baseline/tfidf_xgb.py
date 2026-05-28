@@ -1,3 +1,12 @@
+"""
+TF-IDF + XGBoost baseline training helpers.
+
+COMMON ERRORS / NOTES:
+  - Slowest step: tokenize_corpus_parallel (PyThaiNLP) on ~80k rows — use --n_jobs 4 in notebooks.
+  - PicklingError on joblib.dump: vectorizer must use module-level tokenizer (_vectorizer_tokenize).
+  - Inference on raw text: use transform_texts_with_progress(), not vec.transform() alone.
+  - n_jobs=-1 + Jupyter: can spike RAM; prefer 2–4 workers on Windows.
+"""
 from __future__ import annotations
 
 import logging
@@ -29,6 +38,7 @@ class TfidfXgbConfig:
     n_estimators: int = 400
     learning_rate: float = 0.1
     max_depth: int = 8
+    max_bin: int = 128
     subsample: float = 0.9
     colsample_bytree: float = 0.8
     reg_lambda: float = 1.0
@@ -198,6 +208,7 @@ def _xgb_base_kwargs(cfg: TfidfXgbConfig) -> Dict[str, Any]:
         "objective": "multi:softprob",
         "num_class": 5,
         "max_depth": cfg.max_depth,
+        "max_bin": cfg.max_bin,
         "learning_rate": cfg.learning_rate,
         "n_estimators": cfg.n_estimators,
         "subsample": cfg.subsample,
@@ -236,6 +247,13 @@ def train_xgb_with_progress(
         tree_method=cfg.tree_method,
     )
     logger.info("XGBoost device resolved: %s (requested=%s)", resolved, requested)
+    if hasattr(Xtr, "shape"):
+        logger.info(
+            "XGBoost train matrix shape=%s nnz=%s (sparse CSR ~%.1f MB data)",
+            Xtr.shape,
+            getattr(Xtr, "nnz", "?"),
+            (getattr(Xtr, "data", None).nbytes / 1e6) if hasattr(Xtr, "data") else 0,
+        )
     fitted, used = fit_xgb_with_device_fallback(
         model,
         Xtr,
