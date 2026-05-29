@@ -6,9 +6,3 @@ joblib
 pythainlp
 torch
 transformers
-datasets
-evaluate
-sentence-transformers
-rapidfuzz
-pyarrow
-tqdm
