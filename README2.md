@@ -17,13 +17,14 @@
 7. [สาย A: Baseline (TF-IDF + XGBoost Native API)](#7-สาย-a-baseline-tf-idf--xgboost-native-api)
 8. [สาย B: XLM-R (PyTorch Manual Loop)](#8-สาย-b-xlm-r-pytorch-manual-loop)
 9. [การทำนายและตรวจ Anomaly (`score.py`)](#9-การทำนายและตรวจ-anomaly-scorepy)
-10. [Artifacts และ Outputs](#10-artifacts-และ-outputs)
-11. [วิธีใช้งานในกรณีต่าง ๆ](#11-วิธีใช้งานในกรณีต่าง-ๆ)
-12. [การปรับ Hyperparameters](#12-การปรับ-hyperparameters)
-13. [Dependencies](#13-dependencies)
-14. [ข้อจำกัดและสิ่งที่โปรเจกต์นี้ไม่ทำ](#14-ข้อจำกัดและสิ่งที่โปรเจกต์นี้ไม่ทำ)
-15. [แก้ปัญหา (Troubleshooting)](#15-แก้ปัญหา-troubleshooting)
-16. [FAQ](#16-faq)
+10. [การประเมินโมเดล (`evaluate.py`)](#10-การประเมินโมเดล-evaluatepy)
+11. [Artifacts และ Outputs](#11-artifacts-และ-outputs)
+12. [วิธีใช้งานในกรณีต่าง ๆ](#12-วิธีใช้งานในกรณีต่าง-ๆ)
+13. [การปรับ Hyperparameters](#13-การปรับ-hyperparameters)
+14. [Dependencies](#14-dependencies)
+15. [ข้อจำกัดและสิ่งที่โปรเจกต์นี้ไม่ทำ](#15-ข้อจำกัดและสิ่งที่โปรเจกต์นี้ไม่ทำ)
+16. [แก้ปัญหา (Troubleshooting)](#16-แก้ปัญหา-troubleshooting)
+17. [FAQ](#17-faq)
 
 ---
 
@@ -65,9 +66,21 @@ foods-review-classification/
 ├── train_baseline.py      ← เทรนสาย A
 ├── train_xlmr.py          ← เทรนสาย B
 ├── score.py               ← inference + anomaly
-├── data/                  ← ข้อมูลดิบ (gitignore *.csv)
-├── artifacts/             ← โมเดลหลังเทรน (gitignore)
-└── outputs/               ← ผล scored CSV (gitignore)
+├── evaluate.py            ← metrics บนชุด test
+├── visualize_eval.py      ← dashboard HTML
+├── scripts/
+│   ├── download_wongnai.py
+│   └── generate_mock_data.py
+├── data/
+│   ├── wongnai/           ← train.csv, test.csv
+│   └── mock/              ← train.csv, test.csv
+├── artifacts/
+│   ├── baseline/          ← tfidf + xgb
+│   └── xlmr/              ← save_pretrained
+└── outputs/
+    ├── scores/            ← scored CSV
+    ├── eval/              ← eval JSON + preds
+    └── reports/           ← eval_report_viz.html
 ```
 
 **หลักการ:**
@@ -83,7 +96,7 @@ foods-review-classification/
 ```mermaid
 flowchart TB
   subgraph prepare [Prepare]
-    CSV[data/wongnai_train.csv]
+    CSV[data/wongnai/train.csv]
     U[utils.py]
     CSV --> U
   end
@@ -93,9 +106,18 @@ flowchart TB
     TX[train_xlmr.py]
     U --> TB
     U --> TX
-    TB --> A1[artifacts/tfidf_vectorizer.joblib]
-    TB --> A2[artifacts/xgb_model.json]
-    TX --> A3[artifacts/xlmr_model/]
+    TB --> A1[artifacts/baseline/]
+    TB --> A2[artifacts/baseline/]
+    TX --> A3[artifacts/xlmr/]
+  end
+
+  subgraph eval [Evaluate]
+    EV[evaluate.py]
+    U --> EV
+    A1 --> EV
+    A2 --> EV
+    A3 --> EV
+    EV --> EOUT[outputs/eval/]
   end
 
   subgraph infer [Score]
@@ -104,15 +126,17 @@ flowchart TB
     A1 --> SC
     A2 --> SC
     A3 --> SC
-    SC --> OUT[outputs/scored_output_minimal.csv]
+    SC --> OUT[outputs/scores/]
   end
 ```
 
 **ลำดับการทำงานมาตรฐาน:**
 
-1. วางไฟล์ CSV ที่ `data/wongnai_train.csv`
+1. วาง CSV ที่ `data/wongnai/train.csv` + `data/wongnai/test.csv` (หรือ `python scripts/download_wongnai.py`)
 2. `python train_baseline.py` และ/หรือ `python train_xlmr.py`
-3. `python score.py` (หรือ `python score.py --model xlmr`)
+3. `python evaluate.py --model both` (default test: `data/wongnai/test.csv`)
+4. `python visualize_eval.py` → `outputs/reports/eval_report_viz.html`
+5. `python score.py` สำหรับ anomaly CSV ใต้ `outputs/scores/`
 
 ---
 
@@ -125,14 +149,19 @@ flowchart TB
 | `train_baseline.py` | Source | ✅ | เทรน TF-IDF + XGBoost |
 | `train_xlmr.py` | Source | ✅ | เทรน XLM-R ด้วย manual loop |
 | `score.py` | Source | ✅ | Inference + anomaly + export CSV |
+| `evaluate.py` | Source | ✅ | Metrics บน labeled test (baseline / xlmr / both) |
 | `requirements.txt` | Config | ✅ | รายการ dependency |
 | `README.md` | Docs | ✅ | Quick start |
 | `README2.md` | Docs | ✅ | คู่มือฉบับนี้ |
 | `.gitignore` | Config | ✅ | ไม่ commit ข้อมูล/โมเดล/venv |
-| `data/` | Data | โฟลเดอร์เท่านั้น | เก็บ CSV ดิบ |
-| `data/wongnai_train.csv` | Data | ❌ (ignore) | ชุดข้อมูลหลัก |
-| `artifacts/` | Model | ❌ (ignore) | น้ำหนักหลังเทรน |
-| `outputs/` | Result | ❌ (ignore) | ผล scored |
+| `data/wongnai/` | Data | ❌ csv | train.csv, test.csv จาก HF |
+| `data/mock/` | Data | ❌ csv | ข้อมูลสังเคราะห์ |
+| `artifacts/baseline/` | Model | ❌ | TF-IDF + XGBoost |
+| `artifacts/xlmr/` | Model | ❌ | XLM-R weights |
+| `outputs/scores/` | Result | ❌ | scored CSV |
+| `outputs/eval/` | Result | ❌ | metrics JSON |
+| `outputs/reports/` | Result | ❌ | HTML dashboard |
+| `scripts/` | Utility | ✅ | ดาวน์โหลด / สร้าง mock |
 | `.venv/` | Env | ❌ (ignore) | virtual environment (แนะนำสร้างเอง) |
 | `.agents/` | Internal | ขึ้นกับ repo | checkpoint สำหรับ AI agent (ถ้ามี) |
 
@@ -148,9 +177,12 @@ flowchart TB
 
 | ตัวแปร | ค่าเริ่มต้น | ความหมาย |
 |--------|------------|----------|
-| `RAW_DATA_PATH` | `"data/wongnai_train.csv"` | ไฟล์ CSV ที่ใช้เทรน (และ default ของ `score.py`) |
-| `ARTIFACTS_DIR` | `"artifacts"` | โฟลเดอร์เก็บโมเดล |
-| `OUTPUTS_DIR` | `"outputs"` | โฟลเดอร์เก็บผลลัพธ์ |
+| `RAW_DATA_PATH` | `data/mock/train.csv` | ไฟล์เทรนหลัก (แก้ได้) |
+| `WONGNAI_TRAIN_PATH` | `data/wongnai/train.csv` | Wongnai train |
+| `WONGNAI_TEST_PATH` | `data/wongnai/test.csv` | Wongnai test (default evaluate) |
+| `BASELINE_ARTIFACTS_DIR` | `artifacts/baseline/` | TF-IDF + XGB |
+| `XLMR_ARTIFACTS_DIR` | `artifacts/xlmr/` | XLM-R |
+| `SCORES_DIR` / `EVAL_DIR` / `REPORTS_DIR` | ใต้ `outputs/` | แยกประเภทผลลัพธ์ |
 
 #### Device
 
@@ -404,7 +436,15 @@ python score.py --model baseline --input data/test.csv --output outputs/test_sco
 
 ---
 
-### 5.6 `requirements.txt`
+### 5.6 `evaluate.py`
+
+**หน้าที่:** วัด MAE, RMSE, accuracy, F1, confusion matrix บนชุด test ที่มี label — import `predict_baseline` / `predict_xlmr` จาก `score.py`
+
+**รัน:** ดู [§10 การประเมินโมเดล](#10-การประเมินโมเดล-evaluatepy)
+
+---
+
+### 5.7 `requirements.txt`
 
 | Package | ใช้ทำอะไร |
 |---------|-----------|
@@ -423,7 +463,7 @@ python score.py --model baseline --input data/test.csv --output outputs/test_sco
 
 ---
 
-### 5.7 `.gitignore`
+### 5.8 `.gitignore`
 
 | Pattern | เหตุผล |
 |---------|--------|
@@ -558,9 +598,56 @@ Epoch 1/3 | train_loss=... train_acc=... | val_loss=... val_acc=...
 
 ---
 
-## 10. Artifacts และ Outputs
+## 10. การประเมินโมเดล (`evaluate.py`)
 
-### 10.1 หลัง `train_baseline.py`
+สคริปต์นี้วัดประสิทธิภาพบน **ชุดทดสอบที่มี label** — ไม่เทรน ไม่คำนวณ anomaly (ใช้ `score.py` สำหรับงานนั้น)
+
+### 10.1 Metrics
+
+| Metric | ความหมาย |
+|--------|----------|
+| MAE / RMSE | ระหว่าง `user_rating` กับ `ai_expected_rating` (ค่าต่อเนื่อง) |
+| Accuracy | หลังปัดดาว 1–5 |
+| F1 macro / weighted | จำแนก 5 คลาส |
+| Confusion matrix | ใน terminal และ JSON |
+
+### 10.2 CLI
+
+```powershell
+python evaluate.py --model both --input data/wongnai_test.csv --output outputs/eval_report.json
+python evaluate.py --model baseline --input data/mock_test.csv
+python evaluate.py --model xlmr --input data/wongnai_test.csv --save-predictions
+```
+
+| Flag | Default | ความหมาย |
+|------|---------|----------|
+| `--model` | `both` | `baseline`, `xlmr`, หรือ `both` |
+| `--input` | `data/wongnai_test.csv` | CSV ที่มีข้อความ + ดาว (ไม่ควรเป็นไฟล์ที่ใช้เทรน) |
+| `--output` | — | บันทึก metrics เป็น JSON |
+| `--save-predictions` | off | `outputs/eval_baseline_preds.csv`, `outputs/eval_xlmr_preds.csv` |
+
+ทำนาย reuse `predict_baseline` / `predict_xlmr` จาก `score.py`
+
+### 10.3 Visualization (`visualize_eval.py`)
+
+สร้าง dashboard HTML จาก `eval_report.json` — ตารางเปรียบเทียบ, กราฟ metrics, F1 ต่อดาว, confusion matrix
+
+```powershell
+pip install plotly
+python visualize_eval.py
+# เปิด outputs/eval_report_viz.html ในเบราว์เซอร์
+```
+
+| Flag | Default |
+|------|---------|
+| `--input` | `outputs/eval_report.json` |
+| `--output` | `outputs/eval_report_viz.html` |
+
+---
+
+## 11. Artifacts และ Outputs
+
+### 11.1 หลัง `train_baseline.py`
 
 ```
 artifacts/
@@ -568,7 +655,7 @@ artifacts/
 └── xgb_model.json             # XGBoost Booster (native format)
 ```
 
-### 10.2 หลัง `train_xlmr.py`
+### 11.2 หลัง `train_xlmr.py`
 
 ```
 artifacts/xlmr_model/
@@ -579,17 +666,39 @@ artifacts/xlmr_model/
 └── ... (ไฟล์ tokenizer อื่น ๆ จาก save_pretrained)
 ```
 
-### 10.3 หลัง `score.py`
+### 11.3 หลัง `score.py`
 
 ```
 outputs/scored_output_minimal.csv
 ```
 
+### 11.4 หลัง `evaluate.py`
+
+```
+outputs/eval_report.json              # ถ้าระบุ --output
+outputs/eval_baseline_preds.csv       # ถ้า --save-predictions
+outputs/eval_xlmr_preds.csv
+```
+
+### 11.5 หลัง `visualize_eval.py`
+
+```
+outputs/eval_report_viz.html          # dashboard เปรียบเทียบโมเดล
+```
+
 ---
 
-## 11. วิธีใช้งานในกรณีต่าง ๆ
+## 12. วิธีใช้งานในกรณีต่าง ๆ
 
-### 11.1 ติดตั้งครั้งแรก (Windows)
+### 12.0 รันครบใน Notebook เดียว
+
+```powershell
+jupyter notebook run_pipeline.ipynb
+```
+
+หรือ **Run All** ใน VS Code / Cursor — ปรับ flag ในหัว notebook (`RUN_TRAIN_*`, `SKIP_TRAIN_IF_ARTIFACTS_EXIST`)
+
+### 12.1 ติดตั้งครั้งแรก (Windows)
 
 ```powershell
 cd F:\ComSci\Coding\Project\foods-review-classification
@@ -600,16 +709,17 @@ pip install -r requirements.txt
 
 วางข้อมูลที่ `data\wongnai_train.csv`
 
-### 11.2 เทรน + score ครบทั้ง 2 สาย
+### 12.2 เทรน → evaluate → score (ครบทั้ง 2 สาย)
 
 ```powershell
 python train_baseline.py
 python train_xlmr.py
+python evaluate.py --model both --input data/wongnai_test.csv --output outputs/eval_report.json
 python score.py
 python score.py --model xlmr
 ```
 
-### 11.3 ใช้แค่ Baseline (เร็ว)
+### 12.3 ใช้แค่ Baseline (เร็ว)
 
 ```powershell
 python train_baseline.py
@@ -618,7 +728,7 @@ python score.py
 
 ไม่ต้องรัน `train_xlmr.py` — ไม่ต้องมี `artifacts/xlmr_model/`
 
-### 11.4 Score ข้อมูลใหม่ (ไม่ใช่ไฟล์ train)
+### 12.4 Score ข้อมูลใหม่ (ไม่ใช่ไฟล์ train)
 
 ```powershell
 python score.py --input data/new_reviews.csv --output outputs/new_scored.csv
@@ -627,22 +737,22 @@ python score.py --input data/new_reviews.csv --output outputs/new_scored.csv
 **ข้อกำหนด:** CSV ต้องมีคอลัมน์ข้อความ + คะแนน (สำหรับคำนวณ delta/anomaly)  
 ถ้าไม่มี `user_rating` จะ error ตอน `load_and_standardize_data`
 
-### 11.5 เปลี่ยนไฟล์ train หลัก
+### 12.5 เปลี่ยนไฟล์ train หลัก
 
 แก้ `RAW_DATA_PATH` ใน `config.py` แล้วรัน train ใหม่
 
-### 11.6 ทดสอบ pipeline ด้วยข้อมูลจำลองเล็ก ๆ
+### 12.6 ทดสอบ pipeline ด้วยข้อมูลจำลองเล็ก ๆ
 
 สร้าง CSV ~25 แถว (5 ดาว × 5 ประโยค) เพื่อ verify ว่า script รันผ่าน — **อย่าใช้ evaluate โมเดลจริง**
 
-### 11.7 รันซ้ำหลังแก้ config
+### 12.7 รันซ้ำหลังแก้ config
 
 - แก้ `config.py` → รัน `train_*.py` ใหม่ → artifact ถูก **overwrite**
 - จากนั้น `score.py` ใหม่เพื่อผลลัพธ์สอดคล้อง
 
 ---
 
-## 12. การปรับ Hyperparameters
+## 13. การปรับ Hyperparameters
 
 | ต้องการ | แก้ที่ | ผลข้างเคียง |
 |---------|--------|-------------|
@@ -657,7 +767,7 @@ python score.py --input data/new_reviews.csv --output outputs/new_scored.csv
 
 ---
 
-## 13. Dependencies
+## 14. Dependencies
 
 ### ติดตั้ง
 
@@ -675,13 +785,12 @@ pip install -r requirements.txt
 
 ---
 
-## 14. ข้อจำกัดและสิ่งที่โปรเจกต์นี้ไม่ทำ
+## 15. ข้อจำกัดและสิ่งที่โปรเจกต์นี้ไม่ทำ
 
 | ไม่มี | หมายเหตุ |
 |-------|----------|
 | REST API / Web UI | ใช้ CSV batch เท่านั้น |
 | Preprocess script แยก | ทำใน `utils.load_and_standardize_data` |
-| Evaluate script / metrics JSON | ดู log ตอน train |
 | ABSA (แยก aspect) | ตัดออกจากเวอร์ชัน minimal |
 | GeoJSON export | มีแค่ hex color ใน CSV |
 | Multilingual tokenizer (EN) | ใช้ PyThaiNLP `newmm` สำหรับไทยเท่านั้น |
@@ -691,7 +800,7 @@ pip install -r requirements.txt
 
 ---
 
-## 15. แก้ปัญหา (Troubleshooting)
+## 16. แก้ปัญหา (Troubleshooting)
 
 ### `Could not find text/rating column`
 
@@ -746,7 +855,7 @@ python score.py
 
 ---
 
-## 16. FAQ
+## 17. FAQ
 
 **Q: ต้องเทรนทั้ง baseline และ xlmr ไหม?**  
 A: ไม่ — เลือกสายเดียวแล้ว score ด้วย `--model` ที่ตรงกัน

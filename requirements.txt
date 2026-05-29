@@ -6,3 +6,6 @@ joblib
 pythainlp
 torch
 transformers
+plotly
+jupyter
+ipykernel

@@ -5,9 +5,15 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 
-data/*.csv
-artifacts/
-outputs/
+# Data (keep folder structure via .gitkeep)
+data/**/*.csv
+!data/**/.gitkeep
+
+# Model weights & run outputs
+artifacts/**/*
+!artifacts/**/.gitkeep
+outputs/**/*
+!outputs/**/.gitkeep
 
 .DS_Store
 Thumbs.db

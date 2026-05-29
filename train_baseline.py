@@ -70,12 +70,9 @@ def main() -> None:
     bst = train_xgb_native(dtrain, dval, config.XGB_PARAMS)
 
     print("--- Step 4: Saving Trained Artifacts ---")
-    os.makedirs(config.ARTIFACTS_DIR, exist_ok=True)
-    joblib.dump(
-        vectorizer,
-        os.path.join(config.ARTIFACTS_DIR, "tfidf_vectorizer.joblib"),
-    )
-    bst.save_model(os.path.join(config.ARTIFACTS_DIR, "xgb_model.json"))
+    os.makedirs(config.BASELINE_ARTIFACTS_DIR, exist_ok=True)
+    joblib.dump(vectorizer, config.TFIDF_VECTORIZER_PATH)
+    bst.save_model(config.XGB_MODEL_PATH)
     print("Done baseline training!")
 
 

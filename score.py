@@ -31,8 +31,8 @@ def expected_rating_from_probs(probs: np.ndarray) -> np.ndarray:
 
 
 def predict_baseline(df: pd.DataFrame) -> np.ndarray:
-    vectorizer_path = os.path.join(config.ARTIFACTS_DIR, "tfidf_vectorizer.joblib")
-    model_path = os.path.join(config.ARTIFACTS_DIR, "xgb_model.json")
+    vectorizer_path = config.TFIDF_VECTORIZER_PATH
+    model_path = config.XGB_MODEL_PATH
 
     vectorizer = joblib.load(vectorizer_path)
     bst = xgb.Booster()
@@ -45,7 +45,7 @@ def predict_baseline(df: pd.DataFrame) -> np.ndarray:
 
 
 def predict_xlmr(df: pd.DataFrame, batch_size: int = 32) -> np.ndarray:
-    model_dir = os.path.join(config.ARTIFACTS_DIR, "xlmr_model")
+    model_dir = config.XLMR_ARTIFACTS_DIR
     device = torch.device(config.TORCH_DEVICE)
     tokenizer = AutoTokenizer.from_pretrained(model_dir)
     model = AutoModelForSequenceClassification.from_pretrained(model_dir)
@@ -91,7 +91,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output",
-        default=os.path.join(config.OUTPUTS_DIR, "scored_output_minimal.csv"),
+        default=config.DEFAULT_SCORED_OUTPUT,
         help="Output CSV path.",
     )
     return parser.parse_args()

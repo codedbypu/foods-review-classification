@@ -140,7 +140,7 @@ def main() -> None:
         )
 
     print("--- Step 3: Saving Weights Manually ---")
-    out_dir = os.path.join(config.ARTIFACTS_DIR, "xlmr_model")
+    out_dir = config.XLMR_ARTIFACTS_DIR
     os.makedirs(out_dir, exist_ok=True)
     model.save_pretrained(out_dir)
     tokenizer.save_pretrained(out_dir)
