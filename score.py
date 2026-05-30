@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 
 import joblib
 import numpy as np
@@ -46,9 +47,20 @@ def predict_baseline(df: pd.DataFrame) -> np.ndarray:
 
 def predict_xlmr(df: pd.DataFrame, batch_size: int = 32) -> np.ndarray:
     model_dir = config.XLMR_ARTIFACTS_DIR
+    config_json = os.path.join(model_dir, "config.json")
+    if not os.path.isdir(model_dir) or not os.path.isfile(config_json):
+        print(
+            f"XLM-R artifacts not found at {model_dir}\n"
+            "Run: python train_xlmr.py",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     device = torch.device(config.TORCH_DEVICE)
-    tokenizer = AutoTokenizer.from_pretrained(model_dir)
-    model = AutoModelForSequenceClassification.from_pretrained(model_dir)
+    tokenizer = AutoTokenizer.from_pretrained(model_dir, local_files_only=True)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        model_dir, local_files_only=True
+    )
     model.to(device)
     model.eval()
 

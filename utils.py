@@ -1,7 +1,9 @@
 import re
 
+import numpy as np
 import pandas as pd
 from pythainlp.tokenize import word_tokenize
+from sklearn.utils.class_weight import compute_class_weight
 
 TEXT_ALIASES = ("review_body", "text", "review")
 RATING_ALIASES = ("stars", "user_rating", "rating", "star")
@@ -47,3 +49,46 @@ def load_and_standardize_data(file_path: str) -> pd.DataFrame:
 def thai_tokenizer(text: str) -> list[str]:
     """Thai word tokenizer for TfidfVectorizer."""
     return word_tokenize(normalize_text(text), engine="newmm")
+
+
+def compute_class_weights(
+    ratings_1_to_5: np.ndarray,
+    num_classes: int = 5,
+    low_star_boost: float = 1.0,
+) -> np.ndarray:
+    """Balanced weights per class index 0..4; optional boost for stars 1-2."""
+    classes = np.arange(num_classes)
+    labels_0_to_4 = ratings_1_to_5.astype(int) - 1
+    weights = compute_class_weight(
+        class_weight="balanced",
+        classes=classes,
+        y=labels_0_to_4,
+    ).astype(np.float64)
+    if low_star_boost != 1.0:
+        weights[0] *= low_star_boost
+        weights[1] *= low_star_boost
+    return weights
+
+
+def compute_sample_weights_from_ratings(
+    ratings_1_to_5: np.ndarray,
+    class_weights: np.ndarray,
+) -> np.ndarray:
+    """Map per-class weights (index 0..4) to per-sample weights."""
+    indices = ratings_1_to_5.astype(int) - 1
+    return class_weights[indices]
+
+
+def print_rating_distribution(
+    ratings_1_to_5: np.ndarray,
+    class_weights: np.ndarray | None = None,
+    label: str = "train",
+) -> None:
+    """Log star counts and optional class weights for debugging imbalance."""
+    counts = pd.Series(ratings_1_to_5).value_counts().sort_index()
+    print(f"Rating distribution ({label}):")
+    for star in range(1, 6):
+        count = int(counts.get(star, 0))
+        print(f"  star {star}: {count}")
+    if class_weights is not None:
+        print(f"Class weights (index 0..4): {np.round(class_weights, 4).tolist()}")

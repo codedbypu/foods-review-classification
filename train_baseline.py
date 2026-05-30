@@ -61,9 +61,24 @@ def main() -> None:
 
     y_train_cls = df_train["user_rating"].values - 1
     y_val_cls = df_val["user_rating"].values - 1
+    y_train_ratings = df_train["user_rating"].values
 
     print("--- Step 2: Converting to Native DMatrix ---")
-    dtrain = xgb.DMatrix(X_train_vec, label=y_train_cls)
+    class_w = None
+    if config.XGB_USE_SAMPLE_WEIGHT:
+        class_w = utils.compute_class_weights(
+            y_train_ratings,
+            low_star_boost=config.XGB_LOW_STAR_BOOST,
+        )
+        utils.print_rating_distribution(y_train_ratings, class_w, label="train")
+        sample_w = utils.compute_sample_weights_from_ratings(
+            y_train_ratings, class_w
+        )
+        dtrain = xgb.DMatrix(X_train_vec, label=y_train_cls, weight=sample_w)
+    else:
+        utils.print_rating_distribution(y_train_ratings, label="train")
+        dtrain = xgb.DMatrix(X_train_vec, label=y_train_cls)
+
     dval = xgb.DMatrix(X_val_vec, label=y_val_cls)
 
     print("--- Step 3: Training via Native API Engine (No .fit) ---")
