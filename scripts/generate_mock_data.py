@@ -43,13 +43,34 @@ data_map = {
 stars_list = [1, 2, 3, 4, 5]
 weights = [0.1, 0.1, 0.2, 0.3, 0.3]
 
+prefixes = ["ร้านนี้", "มาทานที่นี่", "ลองแล้ว", "วันนี้", "เมื่อวาน", "เพื่อนชวน"]
+suffixes = ["ครับ", "ค่ะ", "นะ", "จริงๆ", "เลย", "มาก"]
+dishes = [
+    "ข้าวมันไก่", "ก๋วยเตี๋ยว", "ต้มยำ", "ส้มตำ", "ข้าวผัด",
+    "แกงเขียวหวาน", "สเต็ก", "เบอร์ger", "ชานม", "ขนมปัง",
+]
+
 rows = []
-for _ in range(2000):
+for i in range(2000):
     star = random.choices(stars_list, weights=weights)[0]
-    body = random.choice(data_map[star])
+    core = random.choice(data_map[star])
+    body = (
+        f"{random.choice(prefixes)} {core} "
+        f"{random.choice(dishes)} #{i % 997 + random.randint(1, 50)} "
+        f"{random.choice(suffixes)}"
+    )
     rows.append({"review_body": body, "stars": star})
 
-out_path = Path(config.MOCK_TRAIN_PATH)
-out_path.parent.mkdir(parents=True, exist_ok=True)
-pd.DataFrame(rows).to_csv(out_path, index=False, encoding="utf-8-sig")
-print(f"Wrote {len(rows)} rows to {out_path}")
+df = pd.DataFrame(rows)
+df = df.sample(frac=1.0, random_state=42).reset_index(drop=True)
+n_test = max(200, int(len(df) * 0.2))
+df_test = df.iloc[:n_test]
+df_train = df.iloc[n_test:]
+
+train_path = Path(config.MOCK_TRAIN_PATH)
+test_path = Path(config.MOCK_TEST_PATH)
+train_path.parent.mkdir(parents=True, exist_ok=True)
+df_train.to_csv(train_path, index=False, encoding="utf-8-sig")
+df_test.to_csv(test_path, index=False, encoding="utf-8-sig")
+print(f"Wrote train {len(df_train)} rows -> {train_path}")
+print(f"Wrote test  {len(df_test)} rows -> {test_path}")

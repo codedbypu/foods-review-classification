@@ -5,6 +5,8 @@ import sys
 
 import numpy as np
 import pandas as pd
+
+from score import prepare_scoring_dataframe
 from sklearn.metrics import (
     accuracy_score,
     classification_report,
@@ -16,14 +18,35 @@ from sklearn.metrics import (
 
 import config
 import utils
-from score import predict_baseline, predict_xlmr
+from score import predict_baseline, predict_baseline_with_probs, predict_xlmr
 
 DEFAULT_EVAL_INPUT = config.WONGNAI_TEST_PATH
 LABELS = [1, 2, 3, 4, 5]
 
 
-def _baseline_artifact_paths() -> tuple[str, str]:
-    return config.TFIDF_VECTORIZER_PATH, config.XGB_MODEL_PATH
+def _baseline_uses_lsa() -> bool:
+    if os.path.isfile(config.BASELINE_META_PATH):
+        with open(config.BASELINE_META_PATH, encoding="utf-8") as f:
+            meta = json.load(f)
+        return bool(meta.get("use_lsa", config.BASELINE_USE_LSA))
+    return config.BASELINE_USE_LSA
+
+
+def _baseline_meta() -> dict:
+    if os.path.isfile(config.BASELINE_META_PATH):
+        with open(config.BASELINE_META_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def _baseline_artifact_paths() -> list[str]:
+    paths = [config.TFIDF_VECTORIZER_PATH, config.XGB_MODEL_PATH]
+    meta = _baseline_meta()
+    if meta.get("use_lsa", _baseline_uses_lsa()):
+        paths.append(config.LSA_TRANSFORMER_PATH)
+    if meta.get("use_char_tfidf", config.BASELINE_USE_CHAR_TFIDF):
+        paths.append(config.CHAR_TFIDF_VECTORIZER_PATH)
+    return paths
 
 
 def _xlmr_artifact_dir() -> str:
@@ -32,8 +55,7 @@ def _xlmr_artifact_dir() -> str:
 
 def ensure_artifacts(model: str) -> None:
     if model in ("baseline", "both"):
-        vec_path, xgb_path = _baseline_artifact_paths()
-        missing = [p for p in (vec_path, xgb_path) if not os.path.isfile(p)]
+        missing = [p for p in _baseline_artifact_paths() if not os.path.isfile(p)]
         if missing:
             print(
                 "Baseline artifacts not found. Run: python train_baseline.py",
@@ -59,6 +81,36 @@ def rounded_stars(expected: np.ndarray) -> np.ndarray:
     return np.clip(np.round(expected), 1, 5).astype(int)
 
 
+def majority_baseline_metrics(
+    y_true: np.ndarray,
+    majority_class: int = config.BASELINE_MAJORITY_CLASS,
+) -> dict:
+    """Predict constant star rating (default 4★) for every row."""
+    expected = np.full(len(y_true), float(majority_class), dtype=np.float64)
+    y_pred = np.full(len(y_true), majority_class, dtype=int)
+    report = classification_report(
+        y_true,
+        y_pred,
+        labels=LABELS,
+        output_dict=True,
+        zero_division=0,
+    )
+    return {
+        "n_samples": int(len(y_true)),
+        "predicted_class": majority_class,
+        "mae": float(mean_absolute_error(y_true, expected)),
+        "rmse": float(np.sqrt(mean_squared_error(y_true, expected))),
+        "accuracy": float(accuracy_score(y_true, y_pred)),
+        "f1_macro": float(f1_score(y_true, y_pred, average="macro", zero_division=0)),
+        "f1_weighted": float(
+            f1_score(y_true, y_pred, average="weighted", zero_division=0)
+        ),
+        "per_class_recall": utils.per_class_recall(report),
+        "classification_report": report,
+        "confusion_matrix": confusion_matrix(y_true, y_pred, labels=LABELS).tolist(),
+    }
+
+
 def compute_metrics(y_true: np.ndarray, expected: np.ndarray) -> dict:
     y_pred = rounded_stars(expected)
     report = classification_report(
@@ -77,6 +129,7 @@ def compute_metrics(y_true: np.ndarray, expected: np.ndarray) -> dict:
         "f1_weighted": float(
             f1_score(y_true, y_pred, average="weighted", zero_division=0)
         ),
+        "per_class_recall": utils.per_class_recall(report),
         "classification_report": report,
         "confusion_matrix": confusion_matrix(y_true, y_pred, labels=LABELS).tolist(),
     }
@@ -95,6 +148,10 @@ def print_metrics(
     print(f"Accuracy:    {metrics['accuracy']:.4f}")
     print(f"F1 macro:    {metrics['f1_macro']:.4f}")
     print(f"F1 weighted: {metrics['f1_weighted']:.4f}")
+    if metrics.get("per_class_recall"):
+        print("Per-class recall:")
+        for star, rec in sorted(metrics["per_class_recall"].items()):
+            print(f"  star {star}: {rec:.4f}")
     print("\nClassification report:")
     print(classification_report(y_true, y_pred, labels=LABELS, zero_division=0))
     print("Confusion matrix (rows=true, cols=pred):")
@@ -168,6 +225,16 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Write per-model prediction CSVs under outputs/.",
     )
+    parser.add_argument(
+        "--export-errors",
+        action="store_true",
+        help="Export error analysis CSVs for baseline under outputs/eval/.",
+    )
+    parser.add_argument(
+        "--no-majority",
+        action="store_true",
+        help="Skip majority-class (4★) baseline in the report.",
+    )
     return parser.parse_args()
 
 
@@ -177,7 +244,7 @@ def main() -> None:
     if not os.path.isfile(args.input):
         print(
             f"Input file not found: {args.input}\n"
-            "Use a held-out test set (e.g. data/wongnai_test.csv) that was not "
+            "Use a held-out test set (e.g. data/wongnai/holdout.csv) that was not "
             "used for training.",
             file=sys.stderr,
         )
@@ -188,15 +255,43 @@ def main() -> None:
     print(f"--- Evaluation (model={args.model}) ---")
     print(f"Input: {args.input}")
 
-    df = utils.load_and_standardize_data(args.input)
+    df = prepare_scoring_dataframe(args.input)
+    utils.compare_rating_distributions(
+        df["user_rating"].values,
+        label_train="eval input (after clean)",
+    )
+    y_true = df["user_rating"].values.astype(int)
     results: dict = {"input": args.input, "models": {}}
 
+    if not args.no_majority:
+        maj = majority_baseline_metrics(y_true)
+        print_metrics(
+            f"Majority baseline (predict {maj['predicted_class']} stars)",
+            maj,
+            y_true,
+            np.full(len(y_true), maj["predicted_class"], dtype=int),
+        )
+        results["majority_baseline"] = maj
+
     if args.model in ("baseline", "both"):
-        expected = predict_baseline(df)
+        expected, probs = predict_baseline_with_probs(df)
         metrics = evaluate_model("Baseline (TF-IDF + XGBoost)", df, expected)
         results["models"]["baseline"] = metrics
         if args.save_predictions:
             save_predictions(df, expected, "baseline")
+        if args.export_errors:
+            prefix = os.path.splitext(os.path.basename(args.input))[0]
+            paths = utils.export_error_analysis(
+                df,
+                expected,
+                probs,
+                config.EVAL_DIR,
+                min_delta=config.ERROR_EXPORT_MIN_DELTA,
+                low_conf_threshold=config.LOW_CONFIDENCE_THRESHOLD,
+                prefix=f"errors_{prefix}",
+            )
+            results["error_exports"] = paths
+            print(f"Error analysis exports: {paths}")
 
     if args.model in ("xlmr", "both"):
         expected = predict_xlmr(df)
